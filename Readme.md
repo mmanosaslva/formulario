@@ -19,8 +19,3 @@ Este proyecto es un sistema CRUD básico para gestionar perfiles de usuarios, de
 - **Actualización (UPDATE)**: `editar.php` recibe ID via GET, consulta el registro, prellena el formulario, actualiza con prepared statements al POST y redirige.
 - **Eliminación (DELETE)**: `eliminar.php` recibe ID via GET, ejecuta DELETE con prepared statement y redirige con mensaje.
 - **Seguridad**: Todos los inputs se sanitizan/validan; se usan bindParam para queries; confirmación JS antes de eliminar.
-- **Mensajes**: Usan sesiones para retroalimentación temporal (éxito/error).
-
-Este flujo simula una arquitectura web básica: frontend (HTML formas/tablas) interactúa con backend (PHP) que persiste datos en MySQL.
-
-Tiempo de desarrollo estimado: 6-10 horas (como en la actividad).
