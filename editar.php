@@ -1,80 +1,90 @@
 <?php
-// editar.php: Formulario para editar un perfil existente.
-// Recibe ID por GET, prellena datos, actualiza con sentencias preparadas y redirige.
+include 'conexion.php';
 
-include 'conexion.php'; // Incluir la conexión a la BD
+function esEmailAscii($email) {
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+    for ($i = 0; $i < strlen($email); $i++) {
+        if (ord($email[$i]) > 127) return false;
+    }
+    return true;
+}
 
-// Verificar que se reciba un ID válido
-if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
+$id = isset($_GET['id']) && is_numeric($_GET['id']) ? (int)$_GET['id'] : 0;
+
+if ($id <= 0) {
     header("Location: index.php");
     exit;
 }
-$id = (int)$_GET['id'];
 
-// Inicializar variables para el formulario y errores
-$nombre = $email = $telefono = '';
-$errores = [];
+$stmt = $pdo->prepare("SELECT * FROM perfiles WHERE id = ?");
+$stmt->execute([$id]);
+$perfil = $stmt->fetch();
 
-// Obtener datos actuales del perfil
-try {
-    $stmt = $pdo->prepare("SELECT * FROM perfiles WHERE id = :id");
-    $stmt->bindParam(':id', $id);
-    $stmt->execute();
-    $perfil = $stmt->fetch();
-    
-    if (!$perfil) {
-        session_start();
-        $_SESSION['mensaje'] = "Perfil no encontrado.";
-        header("Location: index.php");
-        exit;
-    }
-    
-    // Prellenar variables
-    $nombre = $perfil['nombre'];
-    $email = $perfil['email'];
-    $telefono = $perfil['telefono'];
-} catch (PDOException $e) {
-    $errores[] = "Error al obtener perfil: " . $e->getMessage();
+if (!$perfil) {
+    session_start();
+    $_SESSION['mensaje'] = "Perfil no encontrado.";
+    $_SESSION['tipo_mensaje'] = "danger";
+    header("Location: index.php");
+    exit;
 }
 
-// Procesar el formulario si se envía por POST
+$errores = [];
+$datos = [
+    'nombre'   => $perfil['nombre'],
+    'email'    => $perfil['email'],
+    'telefono' => $perfil['telefono'] ?? ''
+];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Sanitizar y validar inputs
-    $nombre = trim($_POST['nombre'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $telefono = trim($_POST['telefono'] ?? '');
-    
-    // Validaciones básicas
-    if (empty($nombre)) {
-        $errores[] = "El nombre es obligatorio.";
+    $datos = array_map('trim', $_POST);
+
+    // Validaciones
+    if (!preg_match('/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\'\-]{2,100}$/u', $datos['nombre'])) {
+        $errores[] = "El nombre solo puede contener letras, espacios, guiones y apóstrofes.";
     }
-    if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errores[] = "El email es obligatorio y debe ser válido.";
+
+    if (empty($datos['email'])) {
+        $errores[] = "El correo electrónico es obligatorio.";
+    } elseif (!esEmailAscii($datos['email'])) {
+        $errores[] = "El correo solo puede contener caracteres ASCII (sin acentos, ñ, emojis, etc.).";
+    } elseif (strlen($datos['email']) > 100) {
+        $errores[] = "El correo es demasiado largo (máx. 100 caracteres).";
     }
-    $telefono = filter_var($telefono, FILTER_SANITIZE_STRING);
-    
-    // Si no hay errores, actualizar en la BD
+
+    if ($datos['telefono'] !== '' && !preg_match('/^[\+]?[0-9\s\-\(\)]{7,20}$/', $datos['telefono'])) {
+        $errores[] = "El teléfono solo puede contener números, +, espacios, guiones y paréntesis.";
+    }
+
+    // Verificar duplicado (solo si el email cambió)
+    if (empty($errores) && $datos['email'] !== $perfil['email']) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM perfiles WHERE email = ? AND id != ?");
+        $stmt->execute([$datos['email'], $id]);
+        if ($stmt->fetchColumn() > 0) {
+            $errores[] = "Este correo electrónico ya está registrado por otro perfil.";
+        }
+    }
+
     if (empty($errores)) {
         try {
-            // Preparar la sentencia SQL
-            $stmt = $pdo->prepare("UPDATE perfiles SET nombre = :nombre, email = :email, telefono = :telefono WHERE id = :id");
-            
-            // Bind parameters
-            $stmt->bindParam(':nombre', $nombre);
-            $stmt->bindParam(':email', $email);
-            $stmt->bindParam(':telefono', $telefono);
-            $stmt->bindParam(':id', $id);
-            
-            // Ejecutar
-            $stmt->execute();
-            
-            // Iniciar sesión para mensaje y redirigir
+            $stmt = $pdo->prepare("
+                UPDATE perfiles 
+                SET nombre = ?, email = ?, telefono = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([
+                $datos['nombre'],
+                $datos['email'],
+                $datos['telefono'] ?: null,
+                $id
+            ]);
+
             session_start();
-            $_SESSION['mensaje'] = "Perfil actualizado exitosamente.";
+            $_SESSION['mensaje'] = "Perfil actualizado correctamente.";
+            $_SESSION['tipo_mensaje'] = "success";
             header("Location: index.php");
             exit;
         } catch (PDOException $e) {
-            $errores[] = "Error al actualizar perfil: " . $e->getMessage();
+            $errores[] = "Error al actualizar: " . $e->getMessage();
         }
     }
 }
@@ -84,31 +94,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Editar Perfil</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .error { color: red; }
-    </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
-    <h1>Editar Perfil ID: <?php echo $id; ?></h1>
-    
-    <!-- Mostrar errores -->
-    <?php if (!empty($errores)): ?>
-        <ul class="error">
-            <?php foreach ($errores as $error): ?>
-                <li><?php echo htmlspecialchars($error); ?></li>
-            <?php endforeach; ?>
-        </ul>
-    <?php endif; ?>
-    
-    <!-- Formulario prellenado -->
-    <form method="POST">
-        <label>Nombre: <input type="text" name="nombre" value="<?php echo htmlspecialchars($nombre); ?>" required></label><br><br>
-        <label>Email: <input type="email" name="email" value="<?php echo htmlspecialchars($email); ?>" required></label><br><br>
-        <label>Teléfono: <input type="text" name="telefono" value="<?php echo htmlspecialchars($telefono); ?>"></label><br><br>
-        <button type="submit">Actualizar</button>
-        <a href="index.php"><button type="button">Cancelar</button></a>
-    </form>
+<body class="bg-light">
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 mt-5">
+
+            <h2 class="mb-4 text-center">Editar Perfil #<?= $id ?></h2>
+
+            <?php if ($errores): ?>
+            <div class="alert alert-danger alert-dismissible fade show">
+                <ul class="mb-0">
+                    <?php foreach ($errores as $error): ?>
+                        <li><?= htmlspecialchars($error) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            <?php endif; ?>
+
+            <form method="POST" novalidate>
+                <div class="mb-3">
+                    <label class="form-label">Nombre completo <span class="text-danger">*</span></label>
+                    <input type="text" name="nombre" class="form-control" required
+                           pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑ\s'-]{2,100}"
+                           value="<?= htmlspecialchars($datos['nombre']) ?>">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Correo electrónico <span class="text-danger">*</span></label>
+                    <input type="email" name="email" class="form-control" required
+                           maxlength="100"
+                           value="<?= htmlspecialchars($datos['email']) ?>">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Teléfono (opcional)</label>
+                    <input type="tel" name="telefono" class="form-control"
+                           pattern="[\+]?[0-9\s\-\(\)]{7,20}"
+                           value="<?= htmlspecialchars($datos['telefono']) ?>">
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-between">
+                    <a href="index.php" class="btn btn-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
