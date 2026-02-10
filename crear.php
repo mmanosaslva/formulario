@@ -1,5 +1,5 @@
 <?php
-//crear un nuevo perfil.
+
 include 'conexion.php'; // Incluir la conexión a la BD
 
 // Función para validar que el email solo contenga caracteres ASCII

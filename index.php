@@ -1,6 +1,4 @@
 <?php
-// index.php - Listado de perfiles con Bootstrap
-
 include 'conexion.php';
 
 session_start();

@@ -1,6 +1,5 @@
 <?php
 // eliminar.php: Elimina un perfil por ID recibido via GET.
-// Usa sentencia preparada, redirige con mensaje de confirmación.
 
 include 'conexion.php'; // Incluir la conexión a la BD
 
